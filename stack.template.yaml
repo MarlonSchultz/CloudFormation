@@ -132,16 +132,3 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref 'NATInPublicSubnet1'
       RouteTableId: !Ref 'PrivateRouteTableSubnet1'
-  ApplicationPublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-        VpcId: !Ref VPC
-        Tags:
-          - Key: Name
-            Value: Application Public Subnet Route Table
-  ApplicationRouteToInternetGateway:
-      Type: AWS::EC2::Route
-      Properties:
-          RouteTableId: !Ref ApplicationPublicRouteTable
-          GatewayId: !Ref InternetGateWay
-          DestinationCidrBlock: 0.0.0.0/0
