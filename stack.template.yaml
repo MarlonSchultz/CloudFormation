@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 2 VPC in 2 AZ with 2 Subnets and 2 NATS
+Description: 1 VPC in 2 AZ with 2 Subnets and 2 NATS
 Parameters:
   DefaultRegion:
     Type: String
@@ -59,6 +59,8 @@ Resources:
       SubnetId: !Ref 'PublicSubnet1'
       InstanceType: t2.nano
       KeyName: MarlonAWS
+      SecurityGroupIds:
+      - !Ref SecurityGroupJumpHostSSH
   PrivateEc2:
     Type: AWS::EC2::Instance
     Properties:
@@ -82,7 +84,24 @@ Resources:
     Properties:
       AllocationId: !GetAtt 'ElasticIp.AllocationId'
       SubnetId: !Ref 'PublicSubnet1'
-# ROUTING
+# SecurityGroups
+  SecurityGroupJumpHostSSH:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Gives all ips access to jumphost
+      GroupName: SecurityGroupJumpHost
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+# Routing
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
