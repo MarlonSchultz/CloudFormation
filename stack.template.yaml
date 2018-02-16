@@ -12,7 +12,7 @@ Resources:
       Tags:
         - Key: Name
           Value: MainVPC
-  PrivateSubnet1:
+  PrivateSubnetOne:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref 'VPC'
@@ -22,7 +22,7 @@ Resources:
         - '0'
         - !GetAZs
           Ref: DefaultRegion
-  PublicSubnet1:
+  PublicSubnetOne:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref 'VPC'
@@ -32,7 +32,7 @@ Resources:
         - '0'
         - !GetAZs
           Ref: DefaultRegion
-  PrivateSubnet2:
+  PrivateSubnetTwo:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref 'VPC'
@@ -42,7 +42,7 @@ Resources:
         - '0'
         - !GetAZs
           Ref: DefaultRegion
-  PublicSubnet2:
+  PublicSubnetTwo:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref 'VPC'
@@ -52,11 +52,38 @@ Resources:
         - '0'
         - !GetAZs
           Ref: DefaultRegion
+  InternetGateWay:
+    Type: AWS::EC2::InternetGateway
+  InternetGateWayVPCConnection:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref 'InternetGateWay'
+      VpcId: !Ref 'VPC'
+  ElasticIpOne:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+  NATInPublicSubnetOne:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt 'ElasticIpOne.AllocationId'
+      SubnetId: !Ref "PublicSubnetOne"
+  ElasticIpTwo:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+  NATInPublicSubnetTwo:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt 'ElasticIpTwo.AllocationId'
+      SubnetId: !Ref "PublicSubnetOne"
+
+# EC2
   JumpHost:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: ami-bf2ba8d0
-      SubnetId: !Ref 'PublicSubnet1'
+      SubnetId: !Ref "PublicSubnetOne"
       InstanceType: t2.nano
       KeyName: MarlonAWS
       SecurityGroupIds:
@@ -65,26 +92,12 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: ami-bf2ba8d0
-      SubnetId: !Ref 'PrivateSubnet1'
+      SubnetId: !Ref "PrivateSubnetOne"
       InstanceType: t2.nano
       KeyName: MarlonAWS
-  InternetGateWay:
-    Type: AWS::EC2::InternetGateway
-  InternetGateWayVPCConnection:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      InternetGatewayId: !Ref 'InternetGateWay'
-      VpcId: !Ref 'VPC'
-  ElasticIp:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: VPC
-  NATInPublicSubnet1:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt 'ElasticIp.AllocationId'
-      SubnetId: !Ref 'PublicSubnet1'
+
 # SecurityGroups
+
   SecurityGroupJumpHostSSH:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -101,7 +114,11 @@ Resources:
         FromPort: '22'
         ToPort: '22'
         CidrIp: 0.0.0.0/0
-# Routing
+
+### Routing
+
+# Routing - General
+
   PublicRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -112,23 +129,49 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateWay
-  PublicSubnet1RouteTableAssoc:
+
+# Routing - SubnetOne
+
+  PublicSubnetOneRouteTableAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet1
-  PrivateRouteTableSubnet1:
+      SubnetId: !Ref "PublicSubnetOne"
+  PrivateRouteTableSubnetOne:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref 'VPC'
-  PrivateSubnet1RouteTableAssoc:
+  PrivateSubnetOneRouteTableAssoc:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref 'PrivateRouteTableSubnet1'
-      SubnetId: !Ref 'PrivateSubnet1'
-  PrivateSubnet1NatRoute:
+      RouteTableId: !Ref 'PrivateRouteTableSubnetOne'
+      SubnetId: !Ref "PrivateSubnetOne"
+  PrivateSubnetOneNatRoute:
     Type: AWS::EC2::Route
     Properties:
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref 'NATInPublicSubnet1'
-      RouteTableId: !Ref 'PrivateRouteTableSubnet1'
+      NatGatewayId: !Ref 'NATInPublicSubnetOne'
+      RouteTableId: !Ref 'PrivateRouteTableSubnetOne'
+
+# Routing - SubnetTwo
+
+  PublicSubnetTwoRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref "PublicSubnetTwo"
+  PrivateRouteTableSubnetTwo:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+  PrivateSubnetTwoRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PrivateRouteTableSubnetTwo'
+      SubnetId: !Ref "PrivateSubnetTwo"
+  PrivateSubnetTwoNatRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref 'NATInPublicSubnetTwo'
+      RouteTableId: !Ref 'PrivateRouteTableSubnetTwo'
