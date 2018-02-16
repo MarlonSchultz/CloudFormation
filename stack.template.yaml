@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 2 VPC in 2 AZ with 2 Subnets and 2 NATS
+Parameters:
+  DefaultRegion:
+    Type: String
+    Default: eu-central-1
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: MainVPC
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: 'false'
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs
+          Ref: DefaultRegion
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: 10.0.0.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs
+          Ref: DefaultRegion
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: 'false'
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs
+          Ref: DefaultRegion
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'VPC'
+      CidrBlock: 10.0.3.0/24
+      MapPublicIpOnLaunch: 'true'
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs
+          Ref: DefaultRegion
+  JumpHost:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-bf2ba8d0
+      SubnetId: !Ref 'PublicSubnet1'
+      InstanceType: t2.nano
+      KeyName: MarlonAWS
+  PrivateEc2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-bf2ba8d0
+      SubnetId: !Ref 'PrivateSubnet1'
+      InstanceType: t2.nano
+      KeyName: MarlonAWS
+  InternetGateWay:
+    Type: AWS::EC2::InternetGateway
+  InternetGateWayVPCConnection:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref 'InternetGateWay'
+      VpcId: !Ref 'VPC'
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+  NATInPublicSubnet1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt 'ElasticIp.AllocationId'
+      SubnetId: !Ref 'PublicSubnet1'
+# ROUTING
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateWay
+  PublicSubnet1RouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+  PrivateRouteTableSubnet1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+  PrivateSubnet1RouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref 'PrivateRouteTableSubnet1'
+      SubnetId: !Ref 'PrivateSubnet1'
+  PrivateSubnet1NatRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref 'NATInPublicSubnet1'
+      RouteTableId: !Ref 'PrivateRouteTableSubnet1'
+  ApplicationPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: Application Public Subnet Route Table
+  ApplicationRouteToInternetGateway:
+      Type: AWS::EC2::Route
+      Properties:
+          RouteTableId: !Ref ApplicationPublicRouteTable
+          GatewayId: !Ref InternetGateWay
+          DestinationCidrBlock: 0.0.0.0/0
