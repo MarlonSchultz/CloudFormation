@@ -246,7 +246,7 @@ Resources:
   AutoScaleLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      ClassicLinkVPCId: !Ref VPC
+      AssociatePublicIpAddress: true
       ImageId: ami-63cbae0c
       SecurityGroups:
       - Ref: SecurityGroupAllowPort80
