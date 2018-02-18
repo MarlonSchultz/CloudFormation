@@ -88,13 +88,13 @@ Resources:
       KeyName: MarlonAWS
       SecurityGroupIds:
       - !Ref SecurityGroupJumpHostSSH
-  PrivateEc2:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: ami-bf2ba8d0
-      SubnetId: !Ref "PrivateSubnetOne"
-      InstanceType: t2.nano
-      KeyName: MarlonAWS
+#  PrivateEc2:
+#    Type: AWS::EC2::Instance
+#    Properties:
+#      ImageId: ami-bf2ba8d0
+#      SubnetId: !Ref "PrivateSubnetOne"
+#      InstanceType: t2.nano
+#      KeyName: MarlonAWS
 
 # SecurityGroups
 
@@ -104,16 +104,23 @@ Resources:
       GroupDescription: Gives all ips access to jumphost
       GroupName: SecurityGroupJumpHost
       VpcId: !Ref VPC
-      SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: '22'
-        ToPort: '22'
-        CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-      - IpProtocol: tcp
-        FromPort: '22'
-        ToPort: '22'
-        CidrIp: 0.0.0.0/0
+
+  EcsSecurityGroupHTTPinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'SecurityGroupJumpHostSSH'
+      IpProtocol: tcp
+      FromPort: '80'
+      ToPort: '80'
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupSSHinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'SecurityGroupJumpHostSSH'
+      IpProtocol: tcp
+      FromPort: '22'
+      ToPort: '22'
+      CidrIp: 0.0.0.0/0
 
 ### Routing
 
@@ -175,3 +182,34 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref 'NATInPublicSubnetTwo'
       RouteTableId: !Ref 'PrivateRouteTableSubnetTwo'
+
+
+# Cluster
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: "TestCluster"
+
+# Tasks
+  NginxTask:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        -
+          Name: Nginx
+          Image: "nginx"
+          Cpu: "10"
+          PortMappings:
+            -
+              ContainerPort: 80
+              HostPort: 80
+          Memory: "500"
+          Essential: "true"
+
+# Service
+  TwoNginx:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Ref "Cluster"
+      DesiredCount: 2
+      TaskDefinition: !Ref NginxTask
