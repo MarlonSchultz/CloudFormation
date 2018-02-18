@@ -39,7 +39,7 @@ Resources:
       CidrBlock: 10.0.2.0/24
       MapPublicIpOnLaunch: 'false'
       AvailabilityZone: !Select
-        - '0'
+        - '1'
         - !GetAZs
           Ref: DefaultRegion
   PublicSubnetTwo:
@@ -49,7 +49,7 @@ Resources:
       CidrBlock: 10.0.3.0/24
       MapPublicIpOnLaunch: 'true'
       AvailabilityZone: !Select
-        - '0'
+        - '1'
         - !GetAZs
           Ref: DefaultRegion
   InternetGateWay:
@@ -76,7 +76,7 @@ Resources:
     Type: AWS::EC2::NatGateway
     Properties:
       AllocationId: !GetAtt 'ElasticIpTwo.AllocationId'
-      SubnetId: !Ref "PublicSubnetOne"
+      SubnetId: !Ref "PublicSubnetTwo"
 
 # EC2
   JumpHost:
@@ -105,6 +105,23 @@ Resources:
       GroupName: SecurityGroupJumpHost
       VpcId: !Ref VPC
 
+  SecurityGroupAllowPort80:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Gives all ips access to jumphost
+      GroupName: SecurityGroupAllowPort80
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
   EcsSecurityGroupHTTPinbound:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -113,6 +130,7 @@ Resources:
       FromPort: '80'
       ToPort: '80'
       CidrIp: 0.0.0.0/0
+
   EcsSecurityGroupSSHinbound:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -190,6 +208,62 @@ Resources:
     Properties:
       ClusterName: "TestCluster"
 
+# ALB for Cluster
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: ALB
+      Scheme: internet-facing
+      SecurityGroups:
+      - !Ref SecurityGroupAllowPort80
+      Subnets:
+      - !Ref PrivateSubnetOne
+      - !Ref PrivateSubnetTwo
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 60
+      UnhealthyThresholdCount: 10
+      HealthCheckPath: /
+      Name: MyTargetGroup
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+      -
+        Type: forward
+        TargetGroupArn: !Ref ALBTargetGroup
+
+# Autoscale Launch Config
+  AutoScaleLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ClassicLinkVPCId: !Ref VPC
+      ImageId: ami-63cbae0c
+      SecurityGroups:
+      - Ref: SecurityGroupAllowPort80
+      InstanceType: t2.small
+
+  AutoscaleNginx:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      LaunchConfigurationName: !Ref "AutoScaleLaunchConfig"
+      MinSize: "2"
+      MaxSize: "2"
+      TargetGroupARNs:
+        - !Ref ALBTargetGroup
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+
 # Tasks
   NginxTask:
     Type: "AWS::ECS::TaskDefinition"
@@ -207,9 +281,20 @@ Resources:
           Essential: "true"
 
 # Service
-  TwoNginx:
+  TwoNginxService:
     Type: "AWS::ECS::Service"
+    DependsOn:
+    - ALBListener
     Properties:
+      ServiceName: TwoNginx
+      LaunchType: EC2
       Cluster: !Ref "Cluster"
       DesiredCount: 2
       TaskDefinition: !Ref NginxTask
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      LoadBalancers:
+        - ContainerName: Nginx
+          ContainerPort: 80
+          TargetGroupArn: !Ref ALBTargetGroup
