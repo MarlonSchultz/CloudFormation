@@ -4,6 +4,9 @@ Parameters:
   DefaultRegion:
     Type: String
     Default: eu-central-1
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: MarlonAWS
 Resources:
   VPC:
     Type: AWS::EC2::VPC
@@ -85,7 +88,7 @@ Resources:
       ImageId: ami-bf2ba8d0
       SubnetId: !Ref "PublicSubnetOne"
       InstanceType: t2.nano
-      KeyName: MarlonAWS
+      KeyName: !Ref KeyName
       SecurityGroupIds:
       - !Ref SecurityGroupJumpHostSSH
 #  PrivateEc2:
@@ -105,22 +108,33 @@ Resources:
       GroupName: SecurityGroupJumpHost
       VpcId: !Ref VPC
 
-  SecurityGroupAllowPort80:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Gives all ips access to jumphost
-      GroupName: SecurityGroupAllowPort80
-      SecurityGroupIngress:
-      - IpProtocol: tcp
-        FromPort: '80'
-        ToPort: '80'
-        CidrIp: 0.0.0.0/0
-      SecurityGroupEgress:
-      - IpProtocol: tcp
-        FromPort: '80'
-        ToPort: '80'
-        CidrIp: 0.0.0.0/0
-      VpcId: !Ref VPC
+  # This security group defines who/where is allowed to access the ECS hosts directly.
+  # By default we're just allowing access from the load balancer.  If you want to SSH
+  # into the hosts, or expose non-load balanced services you can open their ports here.
+  ECSHostSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+          VpcId: !Ref VPC
+          GroupDescription: Access to the ECS hosts and the tasks/containers that run on them
+          SecurityGroupIngress:
+              # Only allow inbound access to ECS from the ELB
+              - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+                IpProtocol: -1
+
+  # This security group defines who/where is allowed to access the Application Load Balancer.
+  # By default, we've opened this up to the public internet (0.0.0.0/0) but can you restrict
+  # it further if you want.
+
+  LoadBalancerSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+          VpcId: !Ref VPC
+          GroupDescription: Access to the load balancer that sits in front of ECS
+          SecurityGroupIngress:
+              # Allow access from anywhere to our ECS services
+              - CidrIp: 0.0.0.0/0
+                IpProtocol: -1
+
 
   EcsSecurityGroupHTTPinbound:
     Type: AWS::EC2::SecurityGroupIngress
@@ -215,7 +229,7 @@ Resources:
       Name: ALB
       Scheme: internet-facing
       SecurityGroups:
-      - !Ref SecurityGroupAllowPort80
+      - !Ref LoadBalancerSecurityGroup
       Subnets:
       - !Ref PrivateSubnetOne
       - !Ref PrivateSubnetTwo
@@ -246,11 +260,12 @@ Resources:
   AutoScaleLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      AssociatePublicIpAddress: true
+      AssociatePublicIpAddress: false
       ImageId: ami-63cbae0c
       SecurityGroups:
-      - Ref: SecurityGroupAllowPort80
+      - Ref: ECSHostSecurityGroup
       InstanceType: t2.small
+      KeyName: !Ref KeyName
 
   AutoscaleNginx:
     Type: "AWS::AutoScaling::AutoScalingGroup"
@@ -291,6 +306,7 @@ Resources:
       Cluster: !Ref "Cluster"
       DesiredCount: 2
       TaskDefinition: !Ref NginxTask
+      Role: !Ref ServiceRole
       DeploymentConfiguration:
         MaximumPercent: 200
         MinimumHealthyPercent: 100
@@ -298,3 +314,38 @@ Resources:
         - ContainerName: Nginx
           ContainerPort: 80
           TargetGroupArn: !Ref ALBTargetGroup
+
+  ServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+        RoleName: !Sub ecs-service-${AWS::StackName}
+        Path: /
+        AssumeRolePolicyDocument: |
+            {
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": { "Service": [ "ecs.amazonaws.com" ]},
+                    "Action": [ "sts:AssumeRole" ]
+                }]
+            }
+        Policies:
+            - PolicyName: !Sub ecs-service-${AWS::StackName}
+              PolicyDocument:
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [{
+                            "Effect": "Allow",
+                            "Action": [
+                                "ec2:AuthorizeSecurityGroupIngress",
+                                "ec2:Describe*",
+                                "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                                "elasticloadbalancing:Describe*",
+                                "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                                "elasticloadbalancing:DeregisterTargets",
+                                "elasticloadbalancing:DescribeTargetGroups",
+                                "elasticloadbalancing:DescribeTargetHealth",
+                                "elasticloadbalancing:RegisterTargets"
+                            ],
+                            "Resource": "*"
+                    }]
+                }
