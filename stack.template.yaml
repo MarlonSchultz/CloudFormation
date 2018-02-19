@@ -29,7 +29,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref 'VPC'
-      CidrBlock: 10.0.0.0/24
+      CidrBlock: 10.0.11.0/24
       MapPublicIpOnLaunch: 'true'
       AvailabilityZone: !Select
         - '0'
@@ -49,7 +49,7 @@ Resources:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref 'VPC'
-      CidrBlock: 10.0.3.0/24
+      CidrBlock: 10.0.12.0/24
       MapPublicIpOnLaunch: 'true'
       AvailabilityZone: !Select
         - '1'
@@ -231,8 +231,8 @@ Resources:
       SecurityGroups:
       - !Ref LoadBalancerSecurityGroup
       Subnets:
-      - !Ref PrivateSubnetOne
-      - !Ref PrivateSubnetTwo
+      - !Ref PublicSubnetOne
+      - !Ref PublicSubnetTwo
 
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -260,7 +260,7 @@ Resources:
   AutoScaleLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      AssociatePublicIpAddress: false
+      AssociatePublicIpAddress: true
       ImageId: ami-63cbae0c
       SecurityGroups:
       - Ref: ECSHostSecurityGroup
