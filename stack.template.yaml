@@ -300,7 +300,7 @@ Resources:
           PortMappings:
             -
               ContainerPort: 80
-              HostPort: 80
+              HostPort: 0
           Memory: "500"
           Essential: "true"
 
