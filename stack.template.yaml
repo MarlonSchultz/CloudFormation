@@ -318,7 +318,7 @@ Resources:
       Role: !Ref ServiceRole
       DeploymentConfiguration:
         MaximumPercent: 200
-        MinimumHealthyPercent: 100
+        MinimumHealthyPercent: 50
       LoadBalancers:
         - ContainerName: Nginx
           ContainerPort: 80
